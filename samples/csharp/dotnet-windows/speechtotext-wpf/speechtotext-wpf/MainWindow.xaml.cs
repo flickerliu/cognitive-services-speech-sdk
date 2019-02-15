@@ -17,6 +17,7 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
     using System.Windows.Controls;
     using Forms = System.Windows.Forms;
     using System.IO.IsolatedStorage;
+    using System.Configuration;
 
     using Microsoft.CognitiveServices.Speech;
     using Microsoft.CognitiveServices.Speech.Audio;
@@ -131,24 +132,84 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
         }
 
         /// <summary>
+        /// Get the text value of configuration
+        /// </summary>
+        private string GetAppSetting(string key, string defaultValue = null)
+        {
+            string val = defaultValue;
+
+            try
+            {
+                val = ConfigurationManager.AppSettings[key];
+            }
+            catch
+            {
+                val = defaultValue;
+            }
+
+            return val;
+        }
+
+        /// <summary>
         /// Initializes a fresh audio session.
         /// </summary>
         private void Initialize()
         {
-            this.UseMicrophone = false;
-            this.UseFileInput = true;
+            this.mainWindow.Title = GetAppSetting("Title", "Microsoft Speech SDK Speech Recognition Sample");
+
+            this.UseMicrophone = (GetAppSetting("UseMicrophone", "true").ToLower().CompareTo("true") == 0);     
+            this.UseFileInput = !this.UseMicrophone;
 
             this.UseBaseModel = true;
             this.UseCustomModel = false;
             this.UseBaseAndCustomModels = false;
 
             // Set the default values for UI
-            this.fileInputRadioButton.IsChecked = true;
+            this.fileInputRadioButton.IsChecked = this.UseFileInput;
+            this.micRadioButton.IsChecked = this.UseMicrophone;
+
             this.basicRadioButton.IsChecked = true;
             this.stopButton.IsEnabled = false;
 
-            this.SubscriptionKey = this.GetValueFromIsolatedStorage(subscriptionKeyFileName);
-            this.CustomModelEndpointId = this.GetValueFromIsolatedStorage(endpointIdFileName);
+            this.SubscriptionKey = GetAppSetting("SubscriptionKey", "");
+            if (string.IsNullOrEmpty(this.SubscriptionKey))
+            {
+                this.SubscriptionKey = this.GetValueFromIsolatedStorage(subscriptionKeyFileName);
+            }
+
+            this.CustomModelEndpointId = GetAppSetting("CustomModelEndpointId", "");
+            if (string.IsNullOrEmpty(this.CustomModelEndpointId))
+            {
+                this.CustomModelEndpointId = this.GetValueFromIsolatedStorage(endpointIdFileName);
+            }
+
+            string region = GetAppSetting("Region");
+            if(!string.IsNullOrEmpty(region))
+            {
+                foreach (ComboBoxItem item in regionComboBox.Items)
+                {
+                    if (string.Compare(item.Tag.ToString(), region, true) == 0)
+                    {
+                        regionComboBox.SelectedItem = item;
+                        break;
+                    }
+                }
+            }
+
+            string language = GetAppSetting("Language");
+            if (!string.IsNullOrEmpty(language))
+            {
+                foreach (ComboBoxItem item in languageComboBox.Items)
+                {
+                    if (string.Compare(item.Tag.ToString(), language, true) == 0)
+                    {
+                        languageComboBox.SelectedItem = item;
+                        break;
+                    }
+                }
+            }
+
+            this.EnableButtons();
         }
 
         /// <summary>
@@ -321,7 +382,7 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
                 isChecked = this.immediateResultsCheckBox.IsChecked == true;
             });
 
-            EventHandler<SpeechRecognitionEventArgs> recognizingHandler = (sender, e) => RecognizedEventHandler(e, recoType);
+            EventHandler<SpeechRecognitionEventArgs> recognizingHandler = (sender, e) => RecognizingEventHandler(e, recoType);
             if (isChecked)
             {
                 recognizer.Recognizing += recognizingHandler;
@@ -370,6 +431,17 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
         {
             var log = (rt == RecoType.Base) ? this.baseModelLogText : this.customModelLogText;
             this.WriteLine(log, "Intermediate result: {0} ", e.Result.Text);
+
+            if (rt == RecoType.Base)
+            {
+                log = this.baseModelLogText;
+                this.SetCurrentText(this.baseModelCurrentText, e.Result.Text);
+            }
+            else
+            {
+                log = this.customModelLogText;
+                this.SetCurrentText(this.customModelCurrentText, e.Result.Text);
+            }
         }
 
         /// <summary>
@@ -393,7 +465,11 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
             this.WriteLine(log, $" --- Final result received. Reason: {e.Result.Reason.ToString()}. --- ");
             if (!string.IsNullOrEmpty(e.Result.Text))
             {
+                //write log
                 this.WriteLine(log, e.Result.Text);
+
+                //write result
+                this.WriteLine(this.recognizedText, $"[{DateTime.Now.ToString("HH:mm:ss")}]  {e.Result.Text}");
             }
         }
 
@@ -633,6 +709,8 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
                 this.startButton.IsEnabled = true;
                 this.radioGroup.IsEnabled = true;
                 this.optionPanel.IsEnabled = true;
+                this.selectFileButton.IsEnabled = this.UseFileInput;
+                this.fileNameTextBox.IsEnabled = this.UseFileInput;
             });
         }
         #endregion
