@@ -18,9 +18,12 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
     using Forms = System.Windows.Forms;
     using System.IO.IsolatedStorage;
     using System.Configuration;
+    using System.Linq;
 
     using Microsoft.CognitiveServices.Speech;
     using Microsoft.CognitiveServices.Speech.Audio;
+    using Microsoft.Bot.Connector.DirectLine;
+    using System.Threading;
 
     /// <summary>
     /// Interaction logic for MainWindow.xaml
@@ -489,7 +492,13 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
                 this.WriteLine(log, e.Result.Text);
 
                 //write result
-                this.WriteLine(this.recognizedText, $"[{DateTime.Now.ToString("HH:mm:ss")}]  {e.Result.Text}");
+                this.WriteLine(this.recognizedText, $"[{DateTime.Now.ToString("HH:mm:ss")}] Me: {e.Result.Text}");
+
+                if (directLineClient != null)
+                {
+                    //发送消息给Bot
+                    SendMessageToBot(e.Result.Text);
+                }               
             }
         }
 
@@ -752,5 +761,132 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
 
         #endregion Events
 
+        #region DirectLine
+
+        DirectLineClient directLineClient = null;
+        Conversation conversation = null;
+        string watermark = null;
+        string userId = null;
+        CancellationTokenSource cts = null;
+        System.Collections.Queue sendMessageQueue = new System.Collections.Queue();
+
+        /// <summary>
+        /// 发送消息给Bot
+        /// </summary>
+        /// <param name="content">内容</param>
+        void SendMessageToBot(string content)
+        {
+            sendMessageQueue.Enqueue(content);
+        }
+
+        private void BtnSend_Click(object sender, RoutedEventArgs e)
+        {
+            SendMessageToBot(txtSendContent.Text.Trim());
+            WriteLine(recognizedText, $"[{DateTime.Now.ToString("HH:mm:ss")}] Me：{txtSendContent.Text.Trim()}");
+            txtSendContent.Text = "";
+            
+        }
+
+        private async void BtnStart_Click(object sender, RoutedEventArgs e)
+        {
+            if (directLineClient == null)
+            {
+                directLineClient = new DirectLineClient(directLineKey);
+            }
+            if (conversation == null)
+            {
+                conversation = await directLineClient.Conversations.StartConversationAsync();
+            }
+            if (cts == null)
+            {
+                cts = new CancellationTokenSource();
+            }
+
+            userId = Guid.NewGuid().ToString();
+
+            recognizedText.Clear();
+            btnStart.Visibility = Visibility.Collapsed;
+            btnStop.Visibility = Visibility.Visible;
+            btnSend.IsEnabled = true;
+            txtSendContent.IsEnabled = true;
+
+            CheckBotMessageAsync();
+        }
+
+        private async void BtnStop_Click(object sender, RoutedEventArgs e)
+        {
+            //结束会话
+            var endOfConversationMessage = new Activity
+            {
+                From = new ChannelAccount(userId),
+                Type = ActivityTypes.EndOfConversation
+            };
+            await directLineClient.Conversations.PostActivityAsync(conversation.ConversationId, endOfConversationMessage, CancellationToken.None);
+
+            cts.Cancel();
+            directLineClient = null;
+            conversation = null;
+            cts = null;
+
+            btnStart.Visibility = Visibility.Visible;
+            btnStop.Visibility = Visibility.Collapsed;
+            btnSend.IsEnabled = false;
+            txtSendContent.IsEnabled = false;
+        }
+
+        async Task CheckBotMessageAsync()
+        {
+            while (!cts.IsCancellationRequested && directLineClient != null)
+            {
+                try
+                {
+                    while (sendMessageQueue.Count > 0)
+                    {
+                        var sendContent = sendMessageQueue.Dequeue().ToString();
+                        var userMessage = new Activity
+                        {
+                            From = new ChannelAccount(userId),
+                            Text = sendContent,
+                            Type = ActivityTypes.Message
+                        };
+
+                        await directLineClient.Conversations.PostActivityAsync(conversation.ConversationId, userMessage, CancellationToken.None);
+                    }
+
+                    var activitySet = await directLineClient.Conversations.GetActivitiesAsync(conversation.ConversationId, watermark, CancellationToken.None);
+                    watermark = activitySet?.Watermark;
+
+                    var activities = from x in activitySet.Activities
+                                     where x.From.Id == "CIBCustomerBotPoc"
+                                     select x;
+                    foreach (Activity activity in activities)
+                    {
+                        //输出bot返回的文本
+                        if (!string.IsNullOrEmpty(activity.Text))
+                        {
+                            WriteLine(recognizedText, $"[{DateTime.Now.ToString("HH:mm:ss")}] Bot: {activity.Text}");
+                        }
+                    }
+                }
+                catch (Exception exc)
+                {
+                    //WriteLine()
+                }
+                finally
+                {
+                    await Task.Delay(1000);
+                }
+            }
+        }
+
+        private void TxtSendContent_KeyUp(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter || e.Key == System.Windows.Input.Key.Return)
+            {
+                BtnSend_Click(null, null);
+            }
+        }
+
+        #endregion
     }
 }
