@@ -228,6 +228,7 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
                 }
             }
 
+            this.DirectLineKey = language = GetAppSetting("DirectLineKey");
             this.EnableButtons();
         }
 
