@@ -138,6 +138,9 @@
                                 <StackPanel Margin="10">
                                     <TextBlock Text="Subscription Key:" />
                                     <TextBox VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Padding="2" Text="{Binding ElementName=mainWindow, Path=SubscriptionKey, Mode=TwoWay}" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                                    <TextBlock Text="DirectLine Key:" />
+                                    <TextBox VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Padding="2" Text="{Binding ElementName=mainWindow, Path=DirectLineKey, Mode=TwoWay}" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+
                                     <StackPanel Visibility="{Binding IsChecked, ElementName=bothRadioButton ,Converter={StaticResource b2v}}" >
                                         <TextBlock Text="CRIS Model ID:"/>
                                         <TextBox VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Padding="2" Text="{Binding ElementName=mainWindow, Path=CustomModelEndpointId, Mode=TwoWay}" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>

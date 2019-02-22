@@ -72,6 +72,24 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
         }
 
         /// <summary>
+        /// Gets or sets Subscription Key
+        /// </summary>
+        public string DirectLineKey
+        {
+            get
+            {
+                return this.directLineKey;
+            }
+
+            set
+            {
+                this.directLineKey = value?.Trim();
+                this.OnPropertyChanged<string>();
+            }
+        }
+
+
+        /// <summary>
         /// Gets or sets region name of the service
         /// </summary>
         public string Region { get; set; }
@@ -102,6 +120,7 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
         private const string defaultLocale = "en-US";
         private string endpointId;
         private string subscriptionKey;
+        private string directLineKey;
         private const string endpointIdFileName = "CustomModelEndpointId.txt";
         private const string subscriptionKeyFileName = "SubscriptionKey.txt";
         private string wavFileName;
