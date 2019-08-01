@@ -56,7 +56,7 @@
                 </ScrollViewer>
                 <Grid Grid.Row="2" Background="White"></Grid>
                 <ScrollViewer Grid.Row="3">
-                    <TextBlock x:Name="specchSynizeText" Grid.Row="0" TextTrimming="WordEllipsis" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="10" FontSize="20" TextWrapping="Wrap" FontFamily="Segoe UI Semibold" />
+                    <TextBlock x:Name="deviceStatusText" Grid.Row="0" TextTrimming="WordEllipsis" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10" FontSize="20" TextWrapping="Wrap" FontFamily="Segoe UI Semibold" />
                 </ScrollViewer>
 
                 <Expander ExpandDirection="Up" Grid.Row="4" FontFamily="Segoe UI Semibold" Header=" Baseline Model Output" Margin="10">
@@ -64,10 +64,10 @@
                 </Expander>
                 <Grid Grid.Row="5" Background="White">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                        <Button x:Name="startButton" Content="Start" Click="StartButton_Click" Margin="10,0" VerticalAlignment="Center" HorizontalAlignment="Center" Width="75" Height="30"/>
+                        <Button x:Name="startButton" Content="Start" Click="StartButton_Click" Margin="10,5" HorizontalAlignment="Center" Width="75"/>
                         <Button x:Name="stopButton" Content="Stop" Click="StopButton_Click" Margin="10,0" VerticalAlignment="Center" Visibility="{Binding IsChecked, ElementName=micRadioButton ,Converter={StaticResource b2v}}" HorizontalAlignment="Center" Width="75" Height="30"/>
                     </StackPanel>
-                </Grid>                
+                </Grid>
             </Grid>
 
             <Grid Grid.Column="1"  Background="White" Margin="10">
@@ -85,14 +85,14 @@
                             <ColumnDefinition Width="60" />
                             <ColumnDefinition Width="60" />
                         </Grid.ColumnDefinitions>
-                        <TextBox x:Name="txtSendContent" Grid.Column="0" IsEnabled="False" KeyUp="TxtSendContent_KeyUp" />                        
+                        <TextBox x:Name="txtSendContent" Grid.Column="0" IsEnabled="False" KeyUp="TxtSendContent_KeyUp" />
                         <Button x:Name="btnSend" Grid.Column="1" Content="Send" IsEnabled="False" Click="BtnSend_Click" />
-                        <Button x:Name="btnStart" Grid.Column="2" Content="Start" Click="BtnStart_Click" />
+                        <Button x:Name="btnStart" Grid.Column="2" Content="Connect" Click="BtnStart_Click" />
                         <Button x:Name="btnStop" Grid.Column="2" Content="Stop" Visibility="Collapsed" Click="BtnStop_Click" />
                     </Grid>
                 </Grid>
-                
-                
+
+
             </Grid>
 
 
@@ -197,7 +197,7 @@
                         <RowDefinition Height="auto"></RowDefinition>
                         <RowDefinition Height="auto"></RowDefinition>
                     </Grid.RowDefinitions>
-                    
+
                 </Grid>
             </Grid>
         </Grid>

@@ -19,10 +19,11 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
     using System.IO.IsolatedStorage;
     using System.Configuration;
     using System.Linq;
-
     using Microsoft.CognitiveServices.Speech;
     using Microsoft.CognitiveServices.Speech.Audio;
     using Microsoft.Bot.Connector.DirectLine;
+    using Microsoft.Azure.CognitiveServices.Language.LUIS.Runtime;
+
     using System.Threading;
 
     /// <summary>
@@ -51,6 +52,16 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
         /// Only custom model used for recognition
         /// </summary>
         public bool UseCustomModel { get; set; }
+
+        /// <summary>
+        /// use directline bot for conversation
+        /// </summary>
+        public bool UseDirectLineBot { get; set; }
+
+        /// <summary>
+        /// use luis bot for conversation
+        /// </summary>
+        public bool UseLuisBot { get; set; }
 
         /// <summary>
         /// Both models used for recognition
@@ -127,6 +138,7 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
         private const string endpointIdFileName = "CustomModelEndpointId.txt";
         private const string subscriptionKeyFileName = "SubscriptionKey.txt";
         private string wavFileName;
+        private SpeechSynthesizer speechSynthesizer = null;
 
         // The TaskCompletionSource must be rooted.
         // See https://blogs.msdn.microsoft.com/pfxteam/2011/10/02/keeping-async-methods-alive/ for details.
@@ -298,6 +310,8 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
                 stopBaseRecognitionTaskCompletionSource = new TaskCompletionSource<int>();
                 Task.Run(async () => { await CreateBaseReco().ConfigureAwait(false); });
             }
+
+            CreateSynthesizer();
         }
 
 
@@ -319,7 +333,46 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
                 stopCustomRecognitionTaskCompletionSource.TrySetResult(0);
             }
 
+            ReleaseSynthesizer();
             EnableButtons();
+        }
+
+        /// <summary>
+        /// Creates Synthesizer with baseline model and selected language:
+        /// Creates a config with subscription key and selected region
+        /// </summary>
+        private void CreateSynthesizer()
+        {
+            if (speechSynthesizer == null)
+            {
+                var config = SpeechConfig.FromSubscription(this.SubscriptionKey, this.Region);
+                config.SpeechSynthesisLanguage = this.RecognitionLanguage;
+
+                speechSynthesizer = new SpeechSynthesizer(config);
+            }
+        }
+
+        /// <summary>
+        /// Release Synthesizer with baseline model and selected language:
+        /// </summary>
+        private void ReleaseSynthesizer()
+        {
+            if (speechSynthesizer != null)
+            {
+                //speechSynthesizer.Dispose();
+                speechSynthesizer = null;
+            }
+        }
+
+        /// <summary>
+        /// Synthesize with baseline model and selected language:
+        /// </summary>
+        private async Task SynthesizeText(string text)
+        {
+            if (speechSynthesizer != null && !string.IsNullOrEmpty(text))
+            {
+                await speechSynthesizer.SpeakTextAsync(text);
+            }
         }
 
         /// <summary>
@@ -334,6 +387,7 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
             var config = SpeechConfig.FromSubscription(this.SubscriptionKey, this.Region);
             config.SpeechRecognitionLanguage = this.RecognitionLanguage;
 
+            //create recognizer
             SpeechRecognizer basicRecognizer;
             if (this.UseMicrophone)
             {
@@ -493,12 +547,7 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
 
                 //write result
                 this.WriteLine(this.recognizedText, $"[{DateTime.Now.ToString("HH:mm:ss")}] Me: {e.Result.Text}");
-
-                if (directLineClient != null)
-                {
-                    //发送消息给Bot
-                    SendMessageToBot(e.Result.Text);
-                }               
+                SendMessageToBot(e.Result.Text);
             }
         }
 
@@ -782,99 +831,144 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
         private void BtnSend_Click(object sender, RoutedEventArgs e)
         {
             SendMessageToBot(txtSendContent.Text.Trim());
-            WriteLine(recognizedText, $"[{DateTime.Now.ToString("HH:mm:ss")}] Me：{txtSendContent.Text.Trim()}");
+            WriteLine(recognizedText, $"[{DateTime.Now.ToString("HH:mm:ss")}] User：{txtSendContent.Text.Trim()}");
             txtSendContent.Text = "";
             
         }
 
         private async void BtnStart_Click(object sender, RoutedEventArgs e)
         {
-            if (directLineClient == null)
+            try
             {
-                directLineClient = new DirectLineClient(directLineKey);
+                if (!string.IsNullOrEmpty(directLineKey))
+                {
+                    if (directLineClient == null)
+                    {
+                        directLineClient = new DirectLineClient(directLineKey);
+                    }
+                    if (conversation == null)
+                    {
+                        conversation = await directLineClient.Conversations.StartConversationAsync();
+                    }
+                }
+
+                if (cts == null)
+                {
+                    cts = new CancellationTokenSource();
+                }
+
+                userId = Guid.NewGuid().ToString();
+                WriteLine(recognizedText, $"[{DateTime.Now.ToString("HH:mm:ss")}] Suceceful to connect direct service, you can start a conversation now. User Id:{userId}");
+
+                //recognizedText.Clear();
+                btnStart.Visibility = Visibility.Collapsed;
+                btnStop.Visibility = Visibility.Visible;
+                btnSend.IsEnabled = true;
+                txtSendContent.IsEnabled = true;
+
+                //start a thread as async call
+                CheckBotMessageAsync();
             }
-            if (conversation == null)
+            catch (Exception exc)
             {
-                conversation = await directLineClient.Conversations.StartConversationAsync();
-            }
-            if (cts == null)
-            {
-                cts = new CancellationTokenSource();
+                WriteLine(recognizedText, $"[{DateTime.Now.ToString("HH:mm:ss")}] Exception: {exc.Message}");
             }
 
-            userId = Guid.NewGuid().ToString();
-
-            recognizedText.Clear();
-            btnStart.Visibility = Visibility.Collapsed;
-            btnStop.Visibility = Visibility.Visible;
-            btnSend.IsEnabled = true;
-            txtSendContent.IsEnabled = true;
-
-            CheckBotMessageAsync();
         }
 
         private async void BtnStop_Click(object sender, RoutedEventArgs e)
         {
-            //结束会话
-            var endOfConversationMessage = new Activity
+            try
+            {
+                //结束会话
+                var endOfConversationMessage = new Activity
+                {
+                    From = new ChannelAccount(userId),
+                    Type = ActivityTypes.EndOfConversation
+                };
+
+                if (directLineClient != null)
+                {
+                    await directLineClient.Conversations.PostActivityAsync(conversation.ConversationId, endOfConversationMessage, CancellationToken.None);
+                    directLineClient = null;
+                    conversation = null;
+                }
+
+                cts.Cancel();
+                cts = null;
+
+                recognizedText.Clear();
+                btnStart.Visibility = Visibility.Visible;
+                btnStop.Visibility = Visibility.Collapsed;
+                btnSend.IsEnabled = false;
+                txtSendContent.IsEnabled = false;
+            }
+            catch (Exception exc)
+            {
+                WriteLine(recognizedText, $"[{DateTime.Now.ToString("HH:mm:ss")}] Exception: {exc.Message}");
+            }
+        }
+
+        async Task ReplyFromDirectLine(string message)
+        {
+            if (string.IsNullOrEmpty(message)) return;
+
+            var userMessage = new Activity
             {
                 From = new ChannelAccount(userId),
-                Type = ActivityTypes.EndOfConversation
+                Text = message,
+                Type = ActivityTypes.Message
             };
-            await directLineClient.Conversations.PostActivityAsync(conversation.ConversationId, endOfConversationMessage, CancellationToken.None);
 
-            cts.Cancel();
-            directLineClient = null;
-            conversation = null;
-            cts = null;
+            await directLineClient.Conversations.PostActivityAsync(conversation.ConversationId, userMessage, CancellationToken.None);
+            var activitySet = await directLineClient.Conversations.GetActivitiesAsync(conversation.ConversationId, watermark, CancellationToken.None);
+            watermark = activitySet?.Watermark;
 
-            btnStart.Visibility = Visibility.Visible;
-            btnStop.Visibility = Visibility.Collapsed;
-            btnSend.IsEnabled = false;
-            txtSendContent.IsEnabled = false;
+            var activities = from x in activitySet.Activities
+                             where x.From.Id == "CIBCustomerBotPoc"
+                             select x;
+            foreach (Activity activity in activities)
+            {
+                //输出bot返回的文本
+                if (!string.IsNullOrEmpty(activity.Text))
+                {
+                    WriteLine(recognizedText, $"[{DateTime.Now.ToString("HH:mm:ss")}] Bot: {activity.Text}");
+                    await SynthesizeText(activity.Text);
+                }
+            }
         }
 
         async Task CheckBotMessageAsync()
         {
-            while (!cts.IsCancellationRequested && directLineClient != null)
+            bool bAlive = true;
+
+            while (!cts.IsCancellationRequested)
             {
                 try
                 {
-                    while (sendMessageQueue.Count > 0)
+                    if (sendMessageQueue.Count > 0)
                     {
                         var sendContent = sendMessageQueue.Dequeue().ToString();
-                        var userMessage = new Activity
+                        if (directLineClient != null)
                         {
-                            From = new ChannelAccount(userId),
-                            Text = sendContent,
-                            Type = ActivityTypes.Message
-                        };
-
-                        await directLineClient.Conversations.PostActivityAsync(conversation.ConversationId, userMessage, CancellationToken.None);
-                    }
-
-                    var activitySet = await directLineClient.Conversations.GetActivitiesAsync(conversation.ConversationId, watermark, CancellationToken.None);
-                    watermark = activitySet?.Watermark;
-
-                    var activities = from x in activitySet.Activities
-                                     where x.From.Id == "CIBCustomerBotPoc"
-                                     select x;
-                    foreach (Activity activity in activities)
-                    {
-                        //输出bot返回的文本
-                        if (!string.IsNullOrEmpty(activity.Text))
-                        {
-                            WriteLine(recognizedText, $"[{DateTime.Now.ToString("HH:mm:ss")}] Bot: {activity.Text}");
+                            await ReplyFromDirectLine(sendContent);
                         }
+
                     }
+
+                    bAlive = true;
                 }
                 catch (Exception exc)
                 {
-                    //WriteLine()
+                    if (bAlive)
+                    {
+                        WriteLine(recognizedText, $"[{DateTime.Now.ToString("HH:mm:ss")}] Exception: {exc.Message}");
+                        bAlive = false;    
+                    }
                 }
                 finally
                 {
-                    await Task.Delay(1000);
+                    await Task.Delay(100);
                 }
             }
         }
