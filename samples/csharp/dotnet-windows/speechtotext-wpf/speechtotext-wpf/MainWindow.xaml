@@ -133,6 +133,7 @@
                                 <RowDefinition Height="auto"></RowDefinition>
                                 <RowDefinition Height="auto"></RowDefinition>
                                 <RowDefinition Height="auto"></RowDefinition>
+                                <RowDefinition Height="auto"></RowDefinition>                                
                             </Grid.RowDefinitions>
 
                             <Expander  Header="Input Source"  x:Name="radioGroup" Grid.Row="0" Margin="5" Visibility="Hidden">
@@ -167,7 +168,13 @@
                                     </ComboBox>
                                 </StackPanel>
                             </Expander>
-                            <Expander  Header="Change Keys"  Grid.Row="4" Grid.Column="0"  Margin="5">
+                            <Expander Header="Bot Type" x:Name="botStyleType" Grid.Row="4" Margin="5" >
+                                <StackPanel Orientation="Vertical">
+                                    <RadioButton x:Name="luisBotButton" IsChecked="{Binding ElementName=mainWindow, Path=UseLuisBot}" Margin="10, 10, 0, 0">LUIS Bot</RadioButton>
+                                    <RadioButton x:Name="directlineBotButton" IsChecked="{Binding ElementName=mainWindow, Path=UseDirectLineBot}" Margin="10, 10, 0, 0">Directline Bot</RadioButton>
+                                </StackPanel>
+                            </Expander>
+                            <Expander  Header="Change Keys"  Grid.Row="5" Grid.Column="0"  Margin="5">
                                 <StackPanel Margin="10">
                                     <TextBlock Text="Subscription Key:" />
                                     <TextBox VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Padding="2" Text="{Binding ElementName=mainWindow, Path=SubscriptionKey, Mode=TwoWay}" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
@@ -185,7 +192,7 @@
                                     <Button Margin="0,5,0,0" Padding="5" Height="35" VerticalAlignment="Top" Click="SaveKey_Click">Save Keys</Button>
                                 </StackPanel>
                             </Expander>
-                            <StackPanel Orientation="Vertical" Grid.Row="5"  Margin="10" >
+                            <StackPanel Orientation="Vertical" Grid.Row="6"  Margin="10" >
                                 <CheckBox x:Name="immediateResultsCheckBox" Margin="0,10" IsChecked="True">Show Immediate Results</CheckBox>
                             </StackPanel>
                         </Grid>

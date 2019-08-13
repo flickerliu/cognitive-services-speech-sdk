@@ -23,8 +23,14 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
     using Microsoft.CognitiveServices.Speech.Audio;
     using Microsoft.Bot.Connector.DirectLine;
     using Microsoft.Azure.CognitiveServices.Language.LUIS.Runtime;
+    using speechtotextwpf;
 
     using System.Threading;
+    using System.Windows.Media.Animation;
+    using System.Net.Http;
+    using System.Runtime.InteropServices;
+    using Microsoft.Azure.CognitiveServices.Language.LUIS.Runtime.Models;
+    using System.Collections.Generic;
 
     /// <summary>
     /// Interaction logic for MainWindow.xaml
@@ -139,6 +145,7 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
         private const string subscriptionKeyFileName = "SubscriptionKey.txt";
         private string wavFileName;
         private SpeechSynthesizer speechSynthesizer = null;
+        private DeviceStatus deviceStatus = null;
 
         // The TaskCompletionSource must be rooted.
         // See https://blogs.msdn.microsoft.com/pfxteam/2011/10/02/keeping-async-methods-alive/ for details.
@@ -198,11 +205,15 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
             this.UseCustomModel = false;
             this.UseBaseAndCustomModels = false;
 
+            this.UseLuisBot = true;
+            this.UseDirectLineBot = false;
+
             // Set the default values for UI
             this.fileInputRadioButton.IsChecked = this.UseFileInput;
             this.micRadioButton.IsChecked = this.UseMicrophone;
 
             this.basicRadioButton.IsChecked = true;
+            this.luisBotButton.IsChecked = true;
             this.stopButton.IsEnabled = false;
 
             this.SubscriptionKey = GetAppSetting("SubscriptionKey", "");
@@ -245,6 +256,12 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
 
             this.DirectLineKey = language = GetAppSetting("DirectLineKey");
             this.EnableButtons();
+
+            deviceStatus = new DeviceStatus();
+            System.Windows.Threading.DispatcherTimer dispatcherTimer = new System.Windows.Threading.DispatcherTimer();
+            dispatcherTimer.Tick += dispatcherTimer_Tick;
+            dispatcherTimer.Interval = new TimeSpan(0,0,0,0,500);
+            dispatcherTimer.Start();
         }
 
         /// <summary>
@@ -825,7 +842,10 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
         /// <param name="content">内容</param>
         void SendMessageToBot(string content)
         {
-            sendMessageQueue.Enqueue(content);
+            if (directLineClient != null || luisClient != null)
+            {
+                sendMessageQueue.Enqueue(content);
+            }
         }
 
         private void BtnSend_Click(object sender, RoutedEventArgs e)
@@ -840,25 +860,38 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
         {
             try
             {
-                if (!string.IsNullOrEmpty(directLineKey))
-                {
-                    if (directLineClient == null)
-                    {
-                        directLineClient = new DirectLineClient(directLineKey);
-                    }
-                    if (conversation == null)
-                    {
-                        conversation = await directLineClient.Conversations.StartConversationAsync();
-                    }
-                }
-
                 if (cts == null)
                 {
                     cts = new CancellationTokenSource();
                 }
 
-                userId = Guid.NewGuid().ToString();
-                WriteLine(recognizedText, $"[{DateTime.Now.ToString("HH:mm:ss")}] Suceceful to connect direct service, you can start a conversation now. User Id:{userId}");
+                if (UseDirectLineBot)
+                {
+                    if (!string.IsNullOrEmpty(directLineKey))
+                    {
+                        if (directLineClient == null)
+                        {
+                            directLineClient = new DirectLineClient(directLineKey);
+                        }
+                        if (conversation == null)
+                        {
+                            conversation = await directLineClient.Conversations.StartConversationAsync();
+                        }
+                    }
+                    userId = Guid.NewGuid().ToString();
+                    WriteLine(recognizedText, $"[{DateTime.Now.ToString("HH:mm:ss")}] Suceceful to connect direct service, you can start a conversation now. User Id:{userId}");
+                }
+
+                if (UseLuisBot)
+                {
+                    if (luisClient == null)
+                    {
+                        luisClient = new LUISRuntimeClient(new ApiKeyServiceClientCredentials(this.luisSubscriptionKey));
+                        luisClient.Endpoint = this.luisEndPoint;
+                    }
+
+                    WriteLine(recognizedText, $"[{DateTime.Now.ToString("HH:mm:ss")}] Suceceful to connect luis service, you can start a conversation now. End Point:{luisClient.Endpoint}");
+                }
 
                 //recognizedText.Clear();
                 btnStart.Visibility = Visibility.Collapsed;
@@ -892,6 +925,11 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
                     await directLineClient.Conversations.PostActivityAsync(conversation.ConversationId, endOfConversationMessage, CancellationToken.None);
                     directLineClient = null;
                     conversation = null;
+                }
+
+                if (luisClient != null)
+                {
+                    luisClient = null;
                 }
 
                 cts.Cancel();
@@ -949,11 +987,16 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
                     if (sendMessageQueue.Count > 0)
                     {
                         var sendContent = sendMessageQueue.Dequeue().ToString();
-                        if (directLineClient != null)
+
+                        if (directLineClient != null && this.UseDirectLineBot)
                         {
                             await ReplyFromDirectLine(sendContent);
                         }
 
+                        if (luisClient != null && this.UseLuisBot)
+                        {
+                            await ReplyFromLuis(sendContent);
+                        }
                     }
 
                     bAlive = true;
@@ -978,6 +1021,172 @@ namespace MicrosoftSpeechSDKSamples.WpfSpeechRecognitionSample
             if (e.Key == System.Windows.Input.Key.Enter || e.Key == System.Windows.Input.Key.Return)
             {
                 BtnSend_Click(null, null);
+            }
+        }
+
+        #endregion
+
+        #region LuisBot
+
+        ILUISRuntimeClient luisClient = null;
+        string luisSubscriptionKey = "a7cee06b63d44cc7a0660518bf997394";
+        string luisEndPoint = "https://eastasia.api.cognitive.microsoft.com";
+        string luisApplicationId = "5a2a656f-8a1c-4f5e-ad97-7221e3e28b76";
+
+        /// <summary>
+        /// Timer event handler.
+        /// </summary>
+        private void dispatcherTimer_Tick(object sender, EventArgs e)
+        {
+            // code goes here
+            if (deviceStatus != null)
+            {
+                string status = string.Format("玛塔: {0}\n照明: {1}\n投影: {2}\n空调: {3}度",
+                                                deviceStatus.IsBotAwake ? "On" : "Off",
+                                                deviceStatus.IsLightOn ? "On" : "Off",
+                                                deviceStatus.IsProjectorOn ? "On" : "Off",
+                                                deviceStatus.CoolerTemperature);
+
+                if (status != this.deviceStatusText.Text)
+                {
+                    this.SetCurrentText(this.deviceStatusText, status);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Identify whether the bot is awake
+        /// </summary>
+        bool IsBotAwake(IList<EntityModel> entityList)
+        {
+            deviceStatus.TempDegree = 1;
+
+            foreach (var entity in entityList)
+            {
+                if (entity.Type == "ActivationWord")
+                {
+                    deviceStatus.IsBotAwake = true;
+                }
+                else if (entity.Type == "builtin.temperature")
+                {
+                    deviceStatus.TempDegree = DeviceStatus.ParserNumberFromText(entity.Entity, 1);
+                }
+            }
+
+            return deviceStatus.IsBotAwake;
+        }
+
+        /// <summary>
+        /// Luis Reply
+        /// </summary>
+        async Task ReplyFromLuis(string message)
+        {
+            var result = await luisClient.Prediction.ResolveAsync(this.luisApplicationId, message);
+            var reply = "";
+
+            if (result.TopScoringIntent.Score < 0.2)
+            {
+                deviceStatus.IsBotAwake = false;
+                return;
+            }
+
+            switch (result.TopScoringIntent.Intent.Trim())
+            {
+                case "Status.Activate":
+                    reply = "您好，我是玛塔，请问有什么可以为您服务的？";
+                    deviceStatus.IsBotAwake = IsBotAwake(result.Entities);
+                    break;
+
+                case "Light.TurnOn":
+                    if (!IsBotAwake(result.Entities)) return;
+                    if (deviceStatus.IsLightOn) reply = "您好，目前灯光已开启。";
+                    else
+                    {
+                        deviceStatus.IsLightOn = true;
+                        reply = "您好，下面将为您开灯。";
+                    }
+                    deviceStatus.IsBotAwake = false;
+                    break;
+
+                case "Light.TurnOff":
+                    if (!IsBotAwake(result.Entities)) return;
+                    if (!deviceStatus.IsLightOn) reply = "您好，目前灯光已关闭。";
+                    else
+                    {
+                        deviceStatus.IsLightOn = false;
+                        reply = "您好，下面将为您关灯。";
+                    }
+                    deviceStatus.IsBotAwake = false;
+                    break;
+
+                case "Projector.TurnOn":
+                    if (!IsBotAwake(result.Entities)) return;
+                    if (deviceStatus.IsProjectorOn) reply = "您好，目前投影已开启。";
+                    else
+                    {
+                        deviceStatus.IsProjectorOn = true;
+                        reply = "您好，下面将为您打开投影。";
+                    }
+                    deviceStatus.IsBotAwake = false;
+                    break;
+
+                case "Projector.TurnOff":
+                    if (!IsBotAwake(result.Entities)) return;
+                    if (!deviceStatus.IsProjectorOn) reply = "您好，目前投影已关闭。";
+                    else
+                    {
+                        deviceStatus.IsProjectorOn = false;
+                        reply = "您好，下面将为您关闭投影。";
+                    }
+                    deviceStatus.IsBotAwake = false;
+                    break;
+
+                case "Temperature.Increase":
+                    if (!IsBotAwake(result.Entities)) return;
+                    else
+                    {
+                        if (deviceStatus.TempDegree < 10)
+                        {
+                            deviceStatus.CoolerTemperature += deviceStatus.TempDegree;
+                            reply = string.Format("您好，下面将为您将空调温度提高{0}度。", deviceStatus.TempDegree);
+                        }
+                        else
+                        {
+                            deviceStatus.CoolerTemperature = deviceStatus.TempDegree;
+                            reply = string.Format("您好，下面将为您将空调温度设为{0}度。", deviceStatus.CoolerTemperature);
+                        }
+                    }
+                    deviceStatus.IsBotAwake = false;
+                    break;
+
+                case "Temperature.Decrease":
+                    if (!IsBotAwake(result.Entities)) return;
+                    else
+                    {
+                        if (deviceStatus.TempDegree < 10)
+                        {
+                            deviceStatus.CoolerTemperature -= deviceStatus.TempDegree;
+                            reply = string.Format("您好，下面将为您将空调温度降低{0}度。", deviceStatus.TempDegree);
+                        }
+                        else
+                        {
+                            deviceStatus.CoolerTemperature = deviceStatus.TempDegree;
+                            reply = string.Format("您好，下面将为您将空调温度设为{0}度。", deviceStatus.CoolerTemperature);
+                        }
+                    }
+                    deviceStatus.IsBotAwake = false;
+                    break;
+
+                case "None":
+                    deviceStatus.IsBotAwake = false;
+                    break;
+            }
+
+            //输出bot返回的文本
+            if (!string.IsNullOrEmpty(reply))
+            {
+                WriteLine(recognizedText, $"[{DateTime.Now.ToString("HH:mm:ss")}] Marta: {reply}");
+                await SynthesizeText(reply);
             }
         }
 
